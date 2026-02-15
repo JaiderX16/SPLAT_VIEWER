@@ -9,6 +9,7 @@ interface PointCloudSceneProps {
     globalScale: number;
     animationState: MutableRefObject<{ pointOpacity: number; fullOpacity: number }>;
     startTimeRef: MutableRefObject<number>;
+    quality?: 'low' | 'high';
 }
 
 interface AnimatedShaderMaterial extends THREE.ShaderMaterial {
@@ -19,7 +20,7 @@ interface AnimatedShaderMaterial extends THREE.ShaderMaterial {
     };
 }
 
-const PointCloudScene = ({ data, globalScale, animationState, startTimeRef }: PointCloudSceneProps) => {
+const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, quality = 'high' }: PointCloudSceneProps) => {
     const meshRef = useRef<THREE.Mesh>(null);
     const materialRef = useRef<AnimatedShaderMaterial>(null);
 
@@ -39,7 +40,22 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef }: Po
         geo.setAttribute('instColor', new THREE.InstancedBufferAttribute(data.colors, 3));
         geo.setAttribute('instScale', new THREE.InstancedBufferAttribute(data.scales, 1));
         geo.setAttribute('instOpacity', new THREE.InstancedBufferAttribute(data.opacities, 1));
-        geo.instanceCount = data.vertexCount;
+
+        // Quality-based point density
+        const targetCount = quality === 'low' ? Math.floor(data.vertexCount * 0.4) : data.vertexCount;
+        geo.instanceCount = targetCount;
+
+        // Compute bounding sphere for frustum culling
+        // Gaussian splats are usually centered around origin or have a known distribution
+        // For a benchmark, we can approximate or compute it from positions if performance allows
+        // Here we'll compute it once from the data
+        const positions = data.positions;
+        let maxDistSq = 0;
+        for (let i = 0; i < positions.length; i += 3) {
+            const d2 = positions[i] ** 2 + positions[i + 1] ** 2 + positions[i + 2] ** 2;
+            if (d2 > maxDistSq) maxDistSq = d2;
+        }
+        geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), Math.sqrt(maxDistSq) + 1);
 
         const mat = new THREE.ShaderMaterial({
             uniforms: {
@@ -60,26 +76,22 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef }: Po
                 varying float vOpacity;
                 varying vec2 vUv;
 
-                // Luma-style elastic bounce
-                float easeOutElastic(float t) {
-                    float p = 0.3;
-                    return pow(2.0, -10.0 * t) * sin((t - p / 4.0) * (2.0 * 3.14159) / p) + 1.0;
-                }
-
                 void main() {
                     vUv = uv;
                     vColor = instColor;
                     vOpacity = instOpacity;
 
-                    // Radial wave: points farther from center appear later
                     float dist = length(instPosition);
                     float triggerTime = dist * 0.5;
                     float t = clamp(uTime - triggerTime, 0.0, 1.0);
 
-                    // Scale animation: 0 → full with elastic bounce
-                    float animationScale = 0.0;
-                    if (t > 0.0) {
-                        animationScale = easeOutElastic(t) * 0.35;
+                    // Simplified animation for performance
+                    float animationScale = clamp(t * 2.0, 0.0, 1.0);
+                    if (t > 0.0 && t < 1.0) {
+                        // Subtle bounce if needed, but linear is faster
+                        animationScale = mix(0.0, 0.35, t); 
+                    } else if (t >= 1.0) {
+                        animationScale = 0.35;
                     }
 
                     vec4 mvPosition = modelViewMatrix * vec4(instPosition, 1.0);
@@ -101,8 +113,9 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef }: Po
                     float distSq = dot(center, center);
                     if (distSq > 0.25) discard;
 
-                    float alpha = exp(-distSq * 15.0) * vOpacity * uGlobalOpacity;
-                    if (alpha < 0.01) discard;
+                    // Faster alpha calculation
+                    float alpha = (1.0 - distSq * 4.0) * vOpacity * uGlobalOpacity;
+                    if (alpha < 0.05) discard;
 
                     gl_FragColor = vec4(vColor, alpha);
                 }
@@ -141,7 +154,7 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef }: Po
 
     if (!geometry || !material) return null;
 
-    return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={false} />;
+    return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={true} />;
 };
 
 export default PointCloudScene;

@@ -13,15 +13,17 @@ interface LocalSplatViewerProps {
 const LocalSplatViewer = ({ source, animationState }: LocalSplatViewerProps) => {
     const groupRef = useRef<THREE.Group>(null);
 
-    useFrame(() => {
-        if (groupRef.current) {
-            const opacity = animationState.current.fullOpacity;
+    const materialsRef = useRef<THREE.Material[]>([]);
+    const traverseCount = useRef(0);
 
+    useFrame(() => {
+        const opacity = animationState.current.fullOpacity;
+
+        // Optimize: Only traverse every 30 frames and only until we find materials
+        if (groupRef.current && materialsRef.current.length === 0 && traverseCount.current % 30 === 0) {
             groupRef.current.traverse((child: any) => {
                 if (child.isMesh && child.material) {
                     const material = child.material;
-
-                    // Inject uniforms if not present
                     if (!material.userData.shaderPatched) {
                         material.userData.shaderPatched = true;
                         material.transparent = true;
@@ -29,26 +31,20 @@ const LocalSplatViewer = ({ source, animationState }: LocalSplatViewerProps) => 
                         material.onBeforeCompile = (shader: any) => {
                             shader.uniforms.uRevealProgress = { value: 0 };
                             shader.uniforms.uGlobalOpacity = { value: 0 };
-
-                            // Make uniforms accessible for updates
                             material.userData.shaderUniforms = shader.uniforms;
 
-                            // Vertex Shader Patch: Scale by distance
                             shader.vertexShader = 'uniform float uRevealProgress;\n' + shader.vertexShader;
                             shader.vertexShader = shader.vertexShader.replace(
                                 'vec4 centerAndScaleData = texelFetch(centerAndScaleTexture, texPos, 0);',
                                 `
                                 vec4 centerAndScaleData = texelFetch(centerAndScaleTexture, texPos, 0);
                                 float dist = length(centerAndScaleData.xyz);
-                                // Reveal logic matching point cloud style (radial wave)
-                                // Progress * 3.0 ensures the wave passes through the whole model (adjust as needed)
                                 float t = clamp(uRevealProgress * 4.0 - dist * 0.5, 0.0, 1.0);
                                 float revealScale = smoothstep(0.0, 1.0, t);
                                 centerAndScaleData.w *= revealScale;
                                 `
                             );
 
-                            // Fragment Shader Patch: Global Opacity
                             shader.fragmentShader = 'uniform float uGlobalOpacity;\n' + shader.fragmentShader;
                             shader.fragmentShader = shader.fragmentShader.replace(
                                 'void main () {',
@@ -56,27 +52,32 @@ const LocalSplatViewer = ({ source, animationState }: LocalSplatViewerProps) => 
                             ).replace(
                                 '#include <alphatest_fragment>',
                                 `
-                                // Apply global opacity
                                 diffuseColor.a *= uGlobalOpacity;
                                 #include <alphatest_fragment>
                                 `
                             );
                         };
                         material.needsUpdate = true;
+                        materialsRef.current.push(material);
                     }
-
-                    // Update uniforms
-                    if (material.userData.shaderUniforms) {
-                        material.userData.shaderUniforms.uRevealProgress.value = opacity; // Drive reveal with opacity
-                        material.userData.shaderUniforms.uGlobalOpacity.value = opacity;
-                    }
-
-                    // Fallback helpers
-                    child.visible = opacity > 0.001;
-                    if (material.transparent !== true) material.transparent = true;
                 }
             });
         }
+
+        // Update cached materials
+        for (const material of materialsRef.current) {
+            if (material.userData.shaderUniforms) {
+                material.userData.shaderUniforms.uRevealProgress.value = opacity;
+                material.userData.shaderUniforms.uGlobalOpacity.value = opacity;
+            }
+        }
+
+        // Fast visibility toggle
+        if (groupRef.current) {
+            groupRef.current.visible = opacity > 0.001;
+        }
+
+        traverseCount.current++;
     });
 
     if (!source) return null;

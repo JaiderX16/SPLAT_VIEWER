@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { MutableRefObject } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Grid, GizmoHelper, GizmoViewport, Stats } from '@react-three/drei';
+import { OrbitControls, Grid, GizmoHelper, GizmoViewport, Stats, PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Internal Components
@@ -29,6 +29,8 @@ export default function App() {
   const [showPointCloud, setShowPointCloud] = useState(true);
   const [urlInput, setUrlInput] = useState('');
   const [isCinematic, setIsCinematic] = useState(false);
+  const [dpr, setDpr] = useState(1); // Start at 1.0 (standard) instead of 1.5
+  const [quality, setQuality] = useState<'low' | 'high'>('high');
 
   // --- Refs ---
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,7 +132,24 @@ export default function App() {
   return (
     <div className="relative w-full h-screen bg-black text-white font-sans overflow-hidden">
       <div className="absolute inset-0 z-0">
-        <Canvas camera={{ position: [0, 0.5, 2.0], fov: 60 }} gl={{ antialias: true, alpha: false }}>
+        <Canvas
+          camera={{ position: [0, 0.5, 2.0], fov: 60 }}
+          dpr={dpr}
+          gl={{
+            antialias: false,
+            alpha: false,
+            powerPreference: 'high-performance',
+            stencil: false,
+            depth: true
+          }}
+          shadows={false}
+        >
+          <PerformanceMonitor
+            ms={200}
+            iterations={3}
+            onDecline={() => setDpr(1)}
+            onIncline={() => setDpr(quality === 'high' ? 1.5 : 1.1)}
+          />
           <color attach="background" args={['#050505']} />
 
           <Grid
@@ -165,6 +184,7 @@ export default function App() {
                 globalScale={globalScale}
                 animationState={animationState}
                 startTimeRef={startTimeRef}
+                quality={quality}
               />
             )}
 
@@ -220,6 +240,8 @@ export default function App() {
         setModelScale={setModelScale}
         replayAnimation={replayAnimation}
         loading={loading}
+        quality={quality}
+        setQuality={setQuality}
       />
     </div>
   );

@@ -16,6 +16,8 @@ interface VisualizerUIProps {
     setModelScale: (scale: number) => void;
     replayAnimation: () => void;
     loading: boolean;
+    quality: 'low' | 'high';
+    setQuality: (quality: 'low' | 'high') => void;
 }
 
 const VisualizerUI = ({
@@ -31,7 +33,9 @@ const VisualizerUI = ({
     modelScale,
     setModelScale,
     replayAnimation,
-    loading
+    loading,
+    quality,
+    setQuality
 }: VisualizerUIProps) => {
     return (
         <div className="absolute inset-0 pointer-events-none p-6 flex flex-col justify-between overflow-hidden">
@@ -66,6 +70,18 @@ const VisualizerUI = ({
                     >
                         {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} className="group-hover:-translate-y-0.5 transition-transform" />}
                         <span>Upload .splat</span>
+                    </button>
+
+                    <button
+                        onClick={() => setQuality(quality === 'high' ? 'low' : 'high')}
+                        className={`group relative backdrop-blur-md border transition-all duration-300 px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2.5 shadow-lg active:scale-95 ${quality === 'high'
+                            ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-200 hover:bg-indigo-500/30'
+                            : 'bg-amber-500/20 border-amber-500/30 text-amber-200 hover:bg-amber-500/30'
+                            }`}
+                        title={quality === 'high' ? 'Switch to Battery Saver' : 'Switch to High Performance'}
+                    >
+                        <div className={`w-2 h-2 rounded-full animate-pulse ${quality === 'high' ? 'bg-indigo-400' : 'bg-amber-400'}`} />
+                        <span>{quality === 'high' ? 'High Quality' : 'Low Quality'}</span>
                     </button>
                 </div>
             </div>
