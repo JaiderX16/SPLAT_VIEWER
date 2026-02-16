@@ -1,13 +1,10 @@
-import { Upload, RotateCcw, Box, Layers, Link as LinkIcon, Loader2 } from 'lucide-react';
-import type { MutableRefObject, ChangeEvent, FormEvent } from 'react';
+import { Upload, RotateCcw, Box, Layers, Loader2 } from 'lucide-react';
+import type { MutableRefObject, ChangeEvent } from 'react';
 import type { SplatData } from '../utils/SplatParser';
 
 interface VisualizerUIProps {
     splatData: SplatData | null;
     source: string | null;
-    urlInput: string;
-    setUrlInput: (url: string) => void;
-    handleUrlSubmit: (e: FormEvent) => void;
     handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void;
     fileInputRef: MutableRefObject<HTMLInputElement | null>;
     globalScale: number;
@@ -22,10 +19,6 @@ interface VisualizerUIProps {
 
 const VisualizerUI = ({
     splatData,
-    source,
-    urlInput,
-    setUrlInput,
-    handleUrlSubmit,
     handleFileUpload,
     fileInputRef,
     globalScale,
@@ -86,38 +79,6 @@ const VisualizerUI = ({
                 </div>
             </div>
 
-            {/* URL Input - Floating Center */}
-            {!splatData && !source && (
-                <div className="pointer-events-auto absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md animate-in fade-in zoom-in duration-500">
-                    <div className="bg-black/60 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl ring-1 ring-white/10">
-                        <form onSubmit={handleUrlSubmit} className="space-y-4">
-                            <div className="flex items-center gap-3 text-white/80 mb-2">
-                                <LinkIcon size={18} />
-                                <label className="text-sm font-semibold tracking-wide">Load from URL</label>
-                            </div>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={urlInput}
-                                    onChange={(e) => setUrlInput(e.target.value)}
-                                    placeholder="https://example.com/model.splat"
-                                    className="w-full bg-white/5 hover:bg-white/10 focus:bg-white/10 transition-colors rounded-xl px-4 py-3 border border-white/10 focus:border-white/30 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-white/10"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={!urlInput.trim() || loading}
-                                    className="absolute right-2 top-2 bottom-2 bg-white/10 hover:bg-white/20 text-white disabled:opacity-0 disabled:pointer-events-none transition-all px-4 rounded-lg text-xs font-semibold"
-                                >
-                                    Load
-                                </button>
-                            </div>
-                            <p className="text-center text-xs text-white/30">
-                                Supports .splat and .ply files
-                            </p>
-                        </form>
-                    </div>
-                </div>
-            )}
 
             {/* Footer Controls */}
             {splatData && (

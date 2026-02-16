@@ -27,7 +27,6 @@ export default function App() {
   const [modelScale, setModelScale] = useState(1.5);
   const [loading, setLoading] = useState(false);
   const [showPointCloud, setShowPointCloud] = useState(true);
-  const [urlInput, setUrlInput] = useState('');
   const [isCinematic, setIsCinematic] = useState(false);
   const [dpr, setDpr] = useState(1); // Start at 1.0 (standard) instead of 1.5
   const [quality, setQuality] = useState<'low' | 'high'>('high');
@@ -106,28 +105,6 @@ export default function App() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
-  const handleUrlSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!urlInput.trim()) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(urlInput);
-      if (!res.ok) throw new Error("URL not accessible");
-      const buffer = await res.arrayBuffer();
-
-      setSplatData(parseSplat(buffer));
-
-      const blob = new Blob([buffer], { type: 'application/octet-stream' });
-      const blobUrl = URL.createObjectURL(blob);
-      setSource(blobUrl);
-      setFormat(undefined);
-    } catch (err) {
-      console.error('Failed to load from URL:', err);
-      alert('No se pudo cargar el archivo desde la URL');
-    }
-    setLoading(false);
-  };
 
   return (
     <div className="relative w-full h-screen bg-black text-white font-sans overflow-hidden">
@@ -229,9 +206,6 @@ export default function App() {
       <VisualizerUI
         splatData={splatData}
         source={source}
-        urlInput={urlInput}
-        setUrlInput={setUrlInput}
-        handleUrlSubmit={handleUrlSubmit}
         handleFileUpload={handleFileUpload}
         fileInputRef={fileInputRef}
         globalScale={globalScale}

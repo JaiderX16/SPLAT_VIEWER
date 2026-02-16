@@ -21,41 +21,114 @@ interface AnimatedShaderMaterial extends THREE.ShaderMaterial {
 }
 
 const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, quality = 'high' }: PointCloudSceneProps) => {
-    const meshRef = useRef<THREE.Mesh>(null);
     const materialRef = useRef<AnimatedShaderMaterial>(null);
 
-    const { geometry, material } = useMemo(() => {
-        if (!data) return { geometry: null, material: null };
+    const { chunks, material } = useMemo(() => {
+        if (!data) return { chunks: [], material: null };
 
-        const geo = new THREE.InstancedBufferGeometry();
+        const chunks: { geometry: THREE.InstancedBufferGeometry }[] = [];
+        const numPoints = data.vertexCount;
+        const targetCount = quality === 'low' ? Math.floor(numPoints * 0.4) : numPoints;
 
-        // Base quad
-        const baseGeometry = new THREE.PlaneGeometry(1, 1);
-        geo.setAttribute('position', baseGeometry.attributes.position);
-        geo.setAttribute('uv', baseGeometry.attributes.uv);
-        geo.setIndex(baseGeometry.index);
+        // --- 1. Define Grid (2x2x2 for 8 chunks) ---
+        const divisions = 2;
+        const gridIndices: number[][] = Array.from({ length: divisions ** 3 }, () => []);
 
-        // Instance attributes
-        geo.setAttribute('instPosition', new THREE.InstancedBufferAttribute(data.positions, 3));
-        geo.setAttribute('instColor', new THREE.InstancedBufferAttribute(data.colors, 3));
-        geo.setAttribute('instScale', new THREE.InstancedBufferAttribute(data.scales, 1));
-        geo.setAttribute('instOpacity', new THREE.InstancedBufferAttribute(data.opacities, 1));
-
-        // Quality-based point density
-        const targetCount = quality === 'low' ? Math.floor(data.vertexCount * 0.4) : data.vertexCount;
-        geo.instanceCount = targetCount;
-
-        // Compute bounding sphere for frustum culling
-        // Gaussian splats are usually centered around origin or have a known distribution
-        // For a benchmark, we can approximate or compute it from positions if performance allows
-        // Here we'll compute it once from the data
-        const positions = data.positions;
-        let maxDistSq = 0;
-        for (let i = 0; i < positions.length; i += 3) {
-            const d2 = positions[i] ** 2 + positions[i + 1] ** 2 + positions[i + 2] ** 2;
-            if (d2 > maxDistSq) maxDistSq = d2;
+        // Find bounding box for spatial division
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        for (let i = 0; i < numPoints * 3; i += 3) {
+            minX = Math.min(minX, data.positions[i]);
+            minY = Math.min(minY, data.positions[i + 1]);
+            minZ = Math.min(minZ, data.positions[i + 2]);
+            maxX = Math.max(maxX, data.positions[i]);
+            maxY = Math.max(maxY, data.positions[i + 1]);
+            maxZ = Math.max(maxZ, data.positions[i + 2]);
         }
-        geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), Math.sqrt(maxDistSq) + 1);
+
+        const sizeX = (maxX - minX) || 1;
+        const sizeY = (maxY - minY) || 1;
+        const sizeZ = (maxZ - minZ) || 1;
+
+        // --- 2. Assign points to chunks ---
+        // We only process targetCount points if low quality is set
+        const step = quality === 'low' ? Math.floor(numPoints / targetCount) : 1;
+
+        for (let i = 0; i < numPoints; i += step) {
+            const idx = i * 3;
+            const px = data.positions[idx];
+            const py = data.positions[idx + 1];
+            const pz = data.positions[idx + 2];
+
+            const ix = Math.min(divisions - 1, Math.floor(((px - minX) / sizeX) * divisions));
+            const iy = Math.min(divisions - 1, Math.floor(((py - minY) / sizeY) * divisions));
+            const iz = Math.min(divisions - 1, Math.floor(((pz - minZ) / sizeZ) * divisions));
+
+            const gridIdx = ix + iy * divisions + iz * (divisions ** 2);
+            gridIndices[gridIdx].push(i);
+        }
+
+        // --- 3. Create Geometries for each chunk ---
+        const baseGeometry = new THREE.PlaneGeometry(1, 1);
+
+        gridIndices.forEach((indices) => {
+            if (indices.length === 0) return;
+
+            const geo = new THREE.InstancedBufferGeometry();
+            geo.setAttribute('position', baseGeometry.attributes.position);
+            geo.setAttribute('uv', baseGeometry.attributes.uv);
+            geo.setIndex(baseGeometry.index);
+
+            const count = indices.length;
+            const pos = new Float32Array(count * 3);
+            const col = new Float32Array(count * 3);
+            const scl = new Float32Array(count);
+            const opa = new Float32Array(count);
+
+            let maxDistSq = 0;
+            const center = new THREE.Vector3(0, 0, 0);
+
+            indices.forEach((pointIdx, i) => {
+                const srcIdx = pointIdx * 3;
+                pos[i * 3] = data.positions[srcIdx];
+                pos[i * 3 + 1] = data.positions[srcIdx + 1];
+                pos[i * 3 + 2] = data.positions[srcIdx + 2];
+
+                col[i * 3] = data.colors[srcIdx];
+                col[i * 3 + 1] = data.colors[srcIdx + 1];
+                col[i * 3 + 2] = data.colors[srcIdx + 2];
+
+                scl[i] = data.scales[pointIdx];
+                opa[i] = data.opacities[pointIdx];
+
+                const d2 = pos[i * 3] ** 2 + pos[i * 3 + 1] ** 2 + pos[i * 3 + 2] ** 2;
+                if (d2 > maxDistSq) maxDistSq = d2;
+
+                center.x += pos[i * 3];
+                center.y += pos[i * 3 + 1];
+                center.z += pos[i * 3 + 2];
+            });
+
+            center.divideScalar(count);
+
+            // Recalculate radius from actual center of chunk
+            let radius = 0;
+            for (let i = 0; i < count; i++) {
+                const dx = pos[i * 3] - center.x;
+                const dy = pos[i * 3 + 1] - center.y;
+                const dz = pos[i * 3 + 2] - center.z;
+                radius = Math.max(radius, dx * dx + dy * dy + dz * dz);
+            }
+
+            geo.setAttribute('instPosition', new THREE.InstancedBufferAttribute(pos, 3));
+            geo.setAttribute('instColor', new THREE.InstancedBufferAttribute(col, 3));
+            geo.setAttribute('instScale', new THREE.InstancedBufferAttribute(scl, 1));
+            geo.setAttribute('instOpacity', new THREE.InstancedBufferAttribute(opa, 1));
+            geo.instanceCount = count;
+            geo.boundingSphere = new THREE.Sphere(center, Math.sqrt(radius) + 0.5);
+
+            chunks.push({ geometry: geo });
+        });
 
         const mat = new THREE.ShaderMaterial({
             uniforms: {
@@ -85,10 +158,8 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
                     float triggerTime = dist * 0.5;
                     float t = clamp(uTime - triggerTime, 0.0, 1.0);
 
-                    // Simplified animation for performance
                     float animationScale = clamp(t * 2.0, 0.0, 1.0);
                     if (t > 0.0 && t < 1.0) {
-                        // Subtle bounce if needed, but linear is faster
                         animationScale = mix(0.0, 0.35, t); 
                     } else if (t >= 1.0) {
                         animationScale = 0.35;
@@ -113,7 +184,6 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
                     float distSq = dot(center, center);
                     if (distSq > 0.25) discard;
 
-                    // Faster alpha calculation
                     float alpha = (1.0 - distSq * 4.0) * vOpacity * uGlobalOpacity;
                     if (alpha < 0.05) discard;
 
@@ -126,8 +196,8 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
             blending: THREE.NormalBlending,
         }) as AnimatedShaderMaterial;
 
-        return { geometry: geo, material: mat };
-    }, [data]);
+        return { chunks, material: mat };
+    }, [data, quality]);
 
     useEffect(() => {
         if (material) {
@@ -152,9 +222,15 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
         materialRef.current.uniforms.uGlobalOpacity.value = animationState.current.pointOpacity;
     });
 
-    if (!geometry || !material) return null;
+    if (!chunks.length || !material) return null;
 
-    return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={true} />;
+    return (
+        <>
+            {chunks.map((chunk, i) => (
+                <mesh key={i} geometry={chunk.geometry} material={material} frustumCulled={true} />
+            ))}
+        </>
+    );
 };
 
 export default PointCloudScene;
