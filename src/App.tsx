@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport, Stats, PerformanceMonitor } from '@react-three/drei';
@@ -36,6 +36,18 @@ export default function App() {
   const startTimeRef = useRef(0) as MutableRefObject<number>;
   const animationState = useRef({ pointOpacity: 1, fullOpacity: 0 });
   const doneRef = useRef(false);
+
+  // Stable Vector3 for CinematicCamera — avoids creating a new object on every render
+  const modelCenter = useMemo(() => new THREE.Vector3(0, 0, 0), []);
+
+  // Revoke previous blob URL when source changes to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (source?.startsWith('blob:')) {
+        URL.revokeObjectURL(source);
+      }
+    };
+  }, [source]);
 
   // --- Effects ---
   useEffect(() => {
@@ -178,7 +190,7 @@ export default function App() {
           {splatData && source && (
             <>
               <CinematicCamera
-                modelCenter={new THREE.Vector3(0, 0, 0)}
+                modelCenter={modelCenter}
                 startTimeRef={startTimeRef}
                 isActive={isCinematic}
               />

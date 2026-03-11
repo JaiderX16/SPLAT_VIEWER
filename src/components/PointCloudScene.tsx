@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect, useMemo, memo } from 'react';
 import type { MutableRefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -34,17 +34,8 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
         const divisions = 2;
         const gridIndices: number[][] = Array.from({ length: divisions ** 3 }, () => []);
 
-        // Find bounding box for spatial division
-        let minX = Infinity, minY = Infinity, minZ = Infinity;
-        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-        for (let i = 0; i < numPoints * 3; i += 3) {
-            minX = Math.min(minX, data.positions[i]);
-            minY = Math.min(minY, data.positions[i + 1]);
-            minZ = Math.min(minZ, data.positions[i + 2]);
-            maxX = Math.max(maxX, data.positions[i]);
-            maxY = Math.max(maxY, data.positions[i + 1]);
-            maxZ = Math.max(maxZ, data.positions[i + 2]);
-        }
+        // Re-use bounding box already computed by SplatParser — no redundant scan
+        const { minX, maxX, minY, maxY, minZ, maxZ } = data.boundingBox;
 
         const sizeX = (maxX - minX) || 1;
         const sizeY = (maxY - minY) || 1;
@@ -203,7 +194,12 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
         if (material) {
             materialRef.current = material;
         }
-    }, [material]);
+        return () => {
+            // Dispose GPU resources when data/quality changes or component unmounts
+            chunks.forEach(c => c.geometry.dispose());
+            material?.dispose();
+        };
+    }, [chunks, material]);
 
     useEffect(() => {
         if (materialRef.current) {
@@ -233,4 +229,4 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
     );
 };
 
-export default PointCloudScene;
+export default memo(PointCloudScene);

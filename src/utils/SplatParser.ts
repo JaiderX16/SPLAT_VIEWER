@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { MAX_ANIMATED_POINTS } from '../components/VisualizerConfig';
 
+export interface BoundingBox {
+    minX: number; maxX: number;
+    minY: number; maxY: number;
+    minZ: number; maxZ: number;
+}
+
 export interface SplatData {
     positions: Float32Array;
     colors: Float32Array;
@@ -9,6 +15,7 @@ export interface SplatData {
     vertexCount: number;
     center: THREE.Vector3;
     minY: number;
+    boundingBox: BoundingBox;
 }
 
 export function parseSplat(buffer: ArrayBuffer): SplatData {
@@ -61,5 +68,6 @@ export function parseSplat(buffer: ArrayBuffer): SplatData {
     }
 
     const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
-    return { positions, colors, scales, opacities, vertexCount, center, minY };
+    const boundingBox: BoundingBox = { minX, maxX, minY, maxY, minZ, maxZ };
+    return { positions, colors, scales, opacities, vertexCount, center, minY, boundingBox };
 }

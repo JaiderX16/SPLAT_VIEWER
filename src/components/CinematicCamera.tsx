@@ -33,24 +33,24 @@ const CinematicCamera = ({ modelCenter, startTimeRef, isActive }: CinematicCamer
         return new THREE.CatmullRomCurve3(points);
     }, [modelCenter]);
 
+    // Reuse a single Vector3 for lookAt target — avoids a GC-triggering allocation every frame
+    const lookTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
+
     useFrame((state) => {
         if (!isActive || !startTimeRef.current) return;
 
         const elapsed = state.clock.elapsedTime - startTimeRef.current;
         const totalDuration = REVEAL_DELAY + CROSSFADE_DURATION + 1.0;
-        // Restore full camera path
         const rawProgress = Math.min(elapsed / totalDuration, 1.0);
 
-        // Función de easing: easeInOutCubic
+        // easeInOutCubic
         const easeProgress = rawProgress < 0.5
             ? 4 * rawProgress * rawProgress * rawProgress
             : 1 - Math.pow(-2 * rawProgress + 2, 3) / 2;
 
         const pos = path.getPointAt(easeProgress);
         camera.position.lerp(pos, 0.05);
-
-        const currentTarget = new THREE.Vector3(0, 0, 0);
-        camera.lookAt(currentTarget);
+        camera.lookAt(lookTarget);
     });
 
     return null;
