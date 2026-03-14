@@ -158,14 +158,12 @@ const PointCloudScene = ({ data, globalScale, animationState, startTimeRef, qual
                     float triggerTime = dist * 0.5;
                     float t = clamp(uTime - triggerTime, 0.0, 1.0);
 
-                    float animationScale = clamp(t * 2.0, 0.0, 1.0);
-                    if (t > 0.0 && t < 1.0) {
-                        animationScale = mix(0.0, 0.35, t); 
-                    } else if (t >= 1.0) {
-                        animationScale = 0.35;
-                    }
+                    // Simple linear reveal - no shockwave, no peak, no elongation
+                    float animationScale = smoothstep(0.0, 1.0, t) * 0.35;
 
                     vec4 mvPosition = modelViewMatrix * vec4(instPosition, 1.0);
+                    
+                    // Apply scale uniformly to the quad
                     float finalScale = instScale * animationScale * uGlobalScale;
                     mvPosition.xyz += vec3(position.x * finalScale, position.y * finalScale, 0.0);
 

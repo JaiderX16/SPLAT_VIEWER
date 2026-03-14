@@ -113,11 +113,12 @@ export default function App() {
           camera={{ position: [0, 0.5, 2.0], fov: 60 }}
           dpr={dpr}
           gl={{
-            antialias: false,
+            antialias: true,
             alpha: false,
             powerPreference: 'high-performance',
             stencil: false,
-            depth: true
+            depth: true,
+            logarithmicDepthBuffer: true
           }}
           shadows={false}
         >
@@ -125,7 +126,7 @@ export default function App() {
             ms={200}
             iterations={3}
             onDecline={() => setDpr(1)}
-            onIncline={() => setDpr(quality === 'high' ? 1.5 : 1.1)}
+            onIncline={() => setDpr(quality === 'high' ? 1.5 : 1)}
           />
           <color attach="background" args={['#050505']} />
 
